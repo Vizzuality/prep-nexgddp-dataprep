@@ -4,6 +4,3 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    environment:
-      - "AAK:${AAK}"
-      - "ASAK:${ASAK}"
