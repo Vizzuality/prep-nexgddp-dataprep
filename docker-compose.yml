@@ -1,0 +1,9 @@
+version: '3'
+services:
+  nexgddp-process:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - "AAK:${AAK}"
+      - "ASAK:${ASAK}"
