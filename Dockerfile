@@ -11,13 +11,11 @@ RUN apt-get update && apt-get dist-upgrade -y && apt-get install -y \
     python-gdal \
     && apt-get clean
 
-
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
 ENV C_INCLUDE_PATH=/usr/include/gdal
 
 RUN pip install --upgrade pip
 RUN pip install virtualenv numpy
-
 
 RUN mkdir -p /opt/$NAME
 WORKDIR /opt/$NAME
