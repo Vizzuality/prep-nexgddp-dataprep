@@ -31,5 +31,5 @@ RUN chown -R $USER /home/$USER/.aws && chmod 600 /home/$USER/.aws/credentials
 
 USER $USER
 
-COPY entrypoint.py entrypoint.py
-ENTRYPOINT python entrypoint.py
+COPY process.py process.py
+ENTRYPOINT python process.py
