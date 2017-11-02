@@ -5,4 +5,4 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./data:/opt/nexgddp/data
+      - "./data:/opt/nexgddp-data-prep/data"

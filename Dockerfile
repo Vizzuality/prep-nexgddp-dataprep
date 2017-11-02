@@ -21,6 +21,7 @@ RUN mkdir -p /opt/$NAME
 RUN mkdir -p /opt/$NAME/data && chmod 755 -R /opt/$NAME/data
 
 WORKDIR /opt/$NAME
+
 RUN cd /opt/$NAME && virtualenv venv && /bin/bash -c "source venv/bin/activate"
 COPY requirements.txt /opt/$NAME/requirements.txt
 RUN pip install -r requirements.txt

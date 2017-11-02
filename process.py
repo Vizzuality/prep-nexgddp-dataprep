@@ -87,7 +87,6 @@ def is_leap_year(year):
      div_100 = True if year % 100 == 0 else False
      return True if div_4 and not div_100 else False
 
-
 def monthly_avg(dataset):
      return dataset.resample('1MS', dim='time', how='mean')
 
@@ -122,9 +121,10 @@ datasets = map(lambda ds: get_dataset(ds, file_prefix), context)
 target = list(zip(context, datasets))
 print(f"target: {target}")
 for ctx, dataset in target:
+     # ACTUAL PROCESSING
      monthly = monthly_avg(dataset)
      data_array = np.squeeze(monthly.to_array())
-     # print(data_array)
+                # ^ consider extra dimensions
      out_raster_stack = np.empty_like(data_array)
 
      for i in range(data_array.shape[0]):
@@ -136,7 +136,7 @@ for ctx, dataset in target:
           out_raster_stack[i, :, :] = np.squeeze(raster_array)
 
      print(ctx)
-     filename = f"{file_prefix}_{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
+     filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
      print(ctx)
      xmin,ymin,xmax,ymax = [-180, -90, 180, 90]
      nrows,ncols = np.shape(out_raster_stack[0, :, :])
@@ -154,57 +154,3 @@ for ctx, dataset in target:
      output_raster = None     
 
 print("Done!")
-
-#     processed_arrays = np.stack((
-#         tmax90F,
-#         tmax95F,
-#         tmax100F,
-#         icing_days,
-#         frost_days,
-#         pr2in,
-#         pr3in,
-#         pr4in,
-#         cdd,
-#         cwd,
-#         tmax5day,
-#         tmin5day,
-#         tmax99p,
-#         tmax1p,
-#         tmin99p,
-#         tmin1p,
-#         pr99p,
-#         pr1p,
-#         prmaxday
-#     ), axis=0)
-    
-#     out_raster_stack = np.empty_like(processed_arrays)
-
-#     for i in range(processed_arrays.shape[0]):
-#         raster = np.squeeze(processed_arrays[i, :, :])
-#         new_raster = np.flipud(cut_and_paste(raster))
-#         out_raster_stack[i, :, :] = np.squeeze(new_raster)
-        
-#     filename = scenario + "_" + model + "_" + year + ".tif"
-#     xmin,ymin,xmax,ymax = [-180, -90, 180, 90]
-#     nrows,ncols = np.shape(out_raster_stack[0, 0, :, :])
-#     xres = (xmax-xmin)/float(ncols)
-#     yres = (ymax-ymin)/float(nrows)
-#     geotransform=(xmin,xres,0,ymax,0, -yres)
-#     output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 19, gdal.GDT_Float32)
-#     output_raster.SetGeoTransform(geotransform)
-#     srs = osr.SpatialReference()
-#     srs.ImportFromEPSG(4326)
-#     output_raster.SetProjection( srs.ExportToWkt() )
-
-#     for nband in range(out_raster_stack.shape[0]):
-#         outBand = output_raster.GetRasterBand(nband + 1)
-#         outBand.WriteArray(np.squeeze(out_raster_stack[nband, 0, :, :]))
-
-#     output_raster = None
-
-
-# years = ["1951", "1952"]
-# for year in years:
-#     calc("historical", "ACCESS1-0", year, prefix=prefix)
-
-# print("Success.")
