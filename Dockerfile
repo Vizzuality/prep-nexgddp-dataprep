@@ -18,7 +18,7 @@ RUN pip install --upgrade pip
 RUN pip install virtualenv numpy
 
 RUN mkdir -p /opt/$NAME
-RUN mkdir -p /opt/$NAME/data && chmod 755 -R /opt/$USER/data
+RUN mkdir -p /opt/$NAME/data && chmod 755 -R /opt/$NAME/data
 
 WORKDIR /opt/$NAME
 RUN cd /opt/$NAME && virtualenv venv && /bin/bash -c "source venv/bin/activate"
