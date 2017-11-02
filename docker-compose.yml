@@ -4,5 +4,5 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-  volumes:
-    - /Volumes/TOSHIBA\ EXT/nexgddp:/opt/nexgddp/data
+    volumes:
+      - ./data:/opt/nexgddp/data

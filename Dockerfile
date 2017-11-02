@@ -18,6 +18,8 @@ RUN pip install --upgrade pip
 RUN pip install virtualenv numpy
 
 RUN mkdir -p /opt/$NAME
+RUN mkdir -p /opt/$NAME/data && chmod 755 -R /opt/$USER/data
+
 WORKDIR /opt/$NAME
 RUN cd /opt/$NAME && virtualenv venv && /bin/bash -c "source venv/bin/activate"
 COPY requirements.txt /opt/$NAME/requirements.txt
@@ -28,6 +30,7 @@ RUN mkdir /home/$USER && mkdir /home/$USER/.aws
 
 COPY credentials /home/$USER/.aws/credentials
 RUN chown -R $USER /home/$USER/.aws && chmod 600 /home/$USER/.aws/credentials
+RUN chown -R $USER /opt/$NAME && chmod 755 -R /home/$USER
 
 USER $USER
 
