@@ -1,19 +1,29 @@
-import gdal
-from osgeo import osr
+import os
 import sys
-import netCDF4
+
 #import boto3
 #import botocore
+
+import gdal
+from osgeo import osr
+import netCDF4
+
 import numpy as np
 import xarray as xr
-import os
 from itertools import groupby
 import matplotlib.pyplot as plt
-
 import numba as nb
 
-print(nb.__version__)
+file_prefix = 'http://192.168.1.36:8081'
 
+def get_file(variable, scenario, model, year, **kwargs):
+     filename = var + "_day_BCSD_" + scenario + "_r1i1p1_" + model + "_" + year + ".nc"
+     filename = kwargs.get("prefix") + "/" + filename if kwargs.get('prefix') else filename
+     print(filename)
+     dataset = xr.open_dataset(filename)
+     return dataset
+
+ 
 # prefix= "/Volumes/TOSHIBA EXT/nexgddp/data"
 # def get_file(var, scenario, model, year, **kwargs):
 #     filename = var + "_day_BCSD_" + scenario + "_r1i1p1_" + model + "_" + year + ".nc"
