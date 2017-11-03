@@ -19,6 +19,7 @@ RUN pip install virtualenv numpy
 
 RUN mkdir -p /opt/$NAME
 RUN mkdir -p /opt/$NAME/data && chmod 755 -R /opt/$NAME/data
+RUN mkdir -p /opt/$NAME/downloads && chmod 755 -R /opt/$NAME/downloads
 
 WORKDIR /opt/$NAME
 

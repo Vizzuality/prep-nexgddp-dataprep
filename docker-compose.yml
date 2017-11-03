@@ -7,4 +7,4 @@ services:
     volumes:
       - "./data:/opt/nexgddp-data-prep/data"
     extra_hosts:
-      - "mymachine:192.168.1.109"
+      - "mymachine:192.168.1.42"
