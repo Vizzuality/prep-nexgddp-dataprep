@@ -30,8 +30,11 @@ RUN groupadd -r $USER && useradd --no-log-init -r -g $USER $USER
 RUN mkdir /home/$USER && mkdir /home/$USER/.aws
 
 COPY credentials /home/$USER/.aws/credentials
+
 RUN chown -R $USER /home/$USER/.aws && chmod 600 /home/$USER/.aws/credentials
-RUN chown -R $USER /opt/$NAME && chmod 755 -R /home/$USER
+
+RUN chown -R $USER /opt/$NAME && chmod 755 -R /opt/$NAME
+RUN chown -R $USER /opt/$NAME/data && chmod 755 -R /opt/$NAME/data
 
 USER $USER
 

@@ -26,7 +26,7 @@ from multiprocessing import Pool
 # GLOBAL VARS #
 ###############
 
-data_url = 'http://192.168.1.42:8080'
+data_url = 'http://mymachine:8080'
 file_prefix = 'data'
 
 #############
@@ -91,10 +91,11 @@ def monthly_avg(dataset):
      return dataset.resample('1MS', dim='time', how='mean')
 
 def cut_and_paste(arr):
-    cut = np.split(arr, 2, axis = 1)
-    print(cut)
-    paste = np.concatenate((cut[1], cut[0]), axis = 'lon')
-    return paste
+     eager_arr = arr.load().values
+     print("Eager array loading")
+     split_raster = np.hsplit(eager_arr, 2)
+     pasted_raster = np.flipud(np.hstack((split_raster[1], split_raster[0])))
+     return pasted_raster
 
 ##############
 # PROCESSING #
@@ -127,22 +128,23 @@ for ctx, dataset in target:
                 # ^ consider extra dimensions
      out_raster_stack = np.empty_like(data_array)
 
+     print("data_array.shape")
+     print(data_array.shape)
+     
+     
      for i in range(data_array.shape[0]):
           raster = np.squeeze(data_array[i, :, :])
-          raster_array = raster.load()
-          print(raster_array)
-          print(raster_array.shape)
+          reproj_array = cut_and_paste(raster)
           # new_raster = cut_and_paste(raster)
-          out_raster_stack[i, :, :] = np.squeeze(raster_array)
+          out_raster_stack[i, :, :] = np.squeeze(reproj_array)
 
-     print(ctx)
      filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
-     print(ctx)
-     xmin,ymin,xmax,ymax = [-180, -90, 180, 90]
-     nrows,ncols = np.shape(out_raster_stack[0, :, :])
-     xres = (xmax-xmin)/float(ncols)
-     yres = (ymax-ymin)/float(nrows)
-     geotransform=(xmin,xres,0,ymax,0, -yres)
+     print(f"filename: {filename}")
+     xmin, ymin, xmax, ymax = [-180, -90, 180, 90]
+     nrows, ncols = np.shape(out_raster_stack[0, :, :])
+     xres = (xmax - xmin) / float(ncols)
+     yres = (ymax - ymin) / float(nrows)
+     geotransform = (xmin, xres, 0, ymax, 0, -yres)
      output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 19, gdal.GDT_Float32)
      output_raster.SetGeoTransform(geotransform)
      srs = osr.SpatialReference()
@@ -151,6 +153,5 @@ for ctx, dataset in target:
      for nband in range(out_raster_stack.shape[0]):
           outBand = output_raster.GetRasterBand(nband + 1)
           outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
-     output_raster = None     
-
+     output_raster = None
 print("Done!")
