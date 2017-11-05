@@ -1,0 +1,8 @@
+version: '2'
+services:
+  step1:
+    extends:
+      file: docker-compose.yml
+      service: nexgddp-process-dev
+    entrypoint: bash entrypoint.sh first
+    container_name: nexgddp-data-prep-step-1

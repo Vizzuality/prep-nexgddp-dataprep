@@ -21,6 +21,9 @@ RUN mkdir -p /opt/$NAME
 RUN mkdir -p /opt/$NAME/data && chmod 755 -R /opt/$NAME/data
 RUN mkdir -p /opt/$NAME/downloads && chmod 755 -R /opt/$NAME/downloads
 
+COPY entrypoint.sh /opt/$NAME/entrypoint.sh
+RUN chmod +x /opt/$NAME/entrypoint.sh
+
 WORKDIR /opt/$NAME
 
 RUN cd /opt/$NAME && virtualenv venv && /bin/bash -c "source venv/bin/activate"
@@ -39,5 +42,5 @@ RUN chown -R $USER /opt/$NAME/data && chmod 755 -R /opt/$NAME/data
 
 USER $USER
 
-COPY process.py process.py
-ENTRYPOINT python process.py
+COPY src/process_step_one.py process_step_one.py
+COPY src/process_step_two.py process_step_two.py

@@ -25,8 +25,8 @@ from multiprocessing import Pool
 ###############
 # GLOBAL VARS #
 ###############
-# data_url = 'http://mymachine:8080' 
-data_url = 'http://nasanex.s3.amazonaws.com'
+data_url = 'http://mymachine:8080' 
+# data_url = 'http://nasanex.s3.amazonaws.com'
 file_prefix = 'data'
 download_prefix = 'downloads'
 
@@ -51,7 +51,7 @@ def get_file(variable, scenario, model, year, prefix = data_url):
 def get_context(**kwargs):
      all_scenarios = ['historical', 'rcp45', 'rcp85']
      all_models = ['ACCESS1-0', 'BNU-ESM', 'CCSM4', 'CESM1-BGC', 'CNRM-CM5', 'CSIRO-Mk3-6-0', 'CanESM2', 'GFDL-CM3', 'GFDL-ESM2G', 'GFDL-ESM2M', 'IPSL-CM5A-LR', 'IPSL-CM5A-MR', 'MIROC-ESM-CHEM', 'MIROC-ESM', 'MIROC5', 'MPI-ESM-LR', 'MPI-ESM-MR', 'MRI-CGCM3', 'NorESM1-M', 'bcc-csm1-1', 'inmcm4']
-     #all_models = ['ACCESS1-0', 'BNU-ESM']
+     all_models = ['ACCESS1-0', 'BNU-ESM']
      # all_models = ['ACCESS1-0']
      all_vars = ['pr', 'tasmax', 'tasmin']
      all_years = {
@@ -59,6 +59,15 @@ def get_context(**kwargs):
           'rcp45': list(range(2006, 2101)),
           'rcp85': list(range(2006, 2101))
      }
+     
+     # all_years = {
+     #      'historical': list(range(1950, 1981)),
+     #      'rcp45': list(range(2006, 2101)),
+     #      'rcp85': list(range(2006, 2101))
+     # }
+
+     # Override for smaller calculations
+
      
      variables = [kwargs.get('variable')] if kwargs.get('variable') else all_vars
      scenarios = [kwargs.get('scenario')] if kwargs.get('scenario') else all_scenarios
@@ -92,6 +101,9 @@ def is_leap_year(year):
 def monthly_avg(dataset):
      return dataset.resample('1MS', dim='time', how='mean')
 
+def yearly_avg(dataset):
+     return dataset.resample('1YS', dim='time', how='mean')
+
 def cut_and_paste(arr):
      eager_arr = arr.load().values
      print("Eager array loading")
@@ -108,7 +120,7 @@ def cut_and_paste(arr):
 contexts = get_context(variable='tasmax', scenario='historical')
 print(f"contexts: {contexts}")
      
-contexts_years = list(set(map(lambda x: x[3], contexts)))
+contexts_years = sorted(list(set(map(lambda x: x[3], contexts))))
 print(f"contexts_years: {contexts_years}")
 # context: [['pr', 'historical', 'ACCESS1-0', 1950], ['pr', 'historical', 'BNU-ESM', 1950], ... ]
 
@@ -153,6 +165,8 @@ for i, year in enumerate(contexts_years):
 
           xmin, ymin, xmax, ymax = [-180, -90, 180, 90]
           nrows, ncols = np.shape(out_raster_stack[0, :, :])
+          print(f"nrows: {nrows}")
+          print(f"ncols: {ncols}")
           xres = (xmax - xmin) / float(ncols)
           yres = (ymax - ymin) / float(nrows)
           geotransform = (xmin, xres, 0, ymax, 0, -yres)
