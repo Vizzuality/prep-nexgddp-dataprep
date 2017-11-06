@@ -30,6 +30,14 @@ data_url = 'http://mymachine:8080'
 file_prefix = 'data'
 download_prefix = 'downloads'
 
+xmin, ymin, xmax, ymax = [-180, -90, 180, 90]
+nrows, ncols = 720, 1440
+
+xres = (xmax - xmin) / float(ncols)
+yres = (ymax - ymin) / float(nrows)
+geotransform = (xmin, xres, 0, ymax, 0, -yres)
+
+
 #############
 # FUNCTIONS #
 #############
@@ -101,6 +109,9 @@ def is_leap_year(year):
 def monthly_avg(dataset):
      return dataset.resample('1MS', dim='time', how='mean')
 
+def calc_cumulative_pr(dataset):
+     return dataset.resample('1YS', dim='time', how=np.sum)
+
 def yearly_avg(dataset):
      return dataset.resample('1YS', dim='time', how='mean')
 
@@ -117,7 +128,7 @@ def cut_and_paste(arr):
 
 # DOWNLOADING FILES
 # Needs catch for unavailable files
-contexts = get_context(variable='tasmax', scenario='historical')
+contexts = get_context(variable='pr', scenario='historical')
 print(f"contexts: {contexts}")
      
 contexts_years = sorted(list(set(map(lambda x: x[3], contexts))))
@@ -145,6 +156,8 @@ for i, year in enumerate(contexts_years):
           # ACTUAL PROCESSING
           print("Calculating monthly averages")
           monthly = monthly_avg(dataset)
+
+          # Monthly avgs
           print("Loading into memory")
           data_array = np.squeeze(monthly.to_array())
                      # ^ consider extra dimensions
@@ -153,6 +166,7 @@ for i, year in enumerate(contexts_years):
           print("data_array.shape")
           print(data_array.shape)
 
+          # Saving monthly avgs
           filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
           print(f"filename: {filename}")
      
@@ -163,13 +177,6 @@ for i, year in enumerate(contexts_years):
                reproj_array = cut_and_paste(raster)
                out_raster_stack[i, :, :] = np.squeeze(reproj_array)
 
-          xmin, ymin, xmax, ymax = [-180, -90, 180, 90]
-          nrows, ncols = np.shape(out_raster_stack[0, :, :])
-          print(f"nrows: {nrows}")
-          print(f"ncols: {ncols}")
-          xres = (xmax - xmin) / float(ncols)
-          yres = (ymax - ymin) / float(nrows)
-          geotransform = (xmin, xres, 0, ymax, 0, -yres)
           output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, data_array.shape[0], gdal.GDT_Float32)
           output_raster.SetGeoTransform(geotransform)
           srs = osr.SpatialReference()
@@ -179,5 +186,27 @@ for i, year in enumerate(contexts_years):
                outBand = output_raster.GetRasterBand(nband + 1)
                outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
           output_raster = None
+
+          # Extra indicators
+          print("Calculating indicators")
+          cdd = calc_cumulative_pr(dataset)
+          print(cdd.to_array().shape)
+          ei_data_array = np.squeeze(cdd.to_array(), axis = 0)
+          print(ei_data_array.shape)
+          # ^ New indexes will be treated as bands - beware an extra dimension ^
+          filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_extra_indicators.tif"
+          output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 1, gdal.GDT_Float32)
+
+          output_raster.SetGeoTransform(geotransform)
+          srs = osr.SpatialReference()
+          srs.ImportFromEPSG(4326)
+          output_raster.SetProjection( srs.ExportToWkt() )
+
+          out_band = output_raster.GetRasterBand(1)
+          # outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
+          out_band.WriteArray(np.array(cut_and_paste(ei_data_array)))
+          output_raster = None
+          # Saving extra indicators
+         
           os.remove(f"{download_prefix}/{ctx[0]}_day_BCSD_{ctx[1]}_r1i1p1_{ctx[2]}_{ctx[3]}.nc")
 print("Done!")

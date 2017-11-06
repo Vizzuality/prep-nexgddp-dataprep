@@ -21,7 +21,7 @@ all_models = ['ACCESS1-0', 'BNU-ESM', 'CCSM4', 'CESM1-BGC', 'CNRM-CM5', 'CSIRO-M
 all_vars = ['pr', 'tasmax', 'tasmin']
 all_years = {
     'historical': list(range(1950, 1981)),
-    'rcp45': list(range(2006, 2101)),
+    'rcp45': list(range(2021, 2051)),
     'rcp85': list(range(2006, 2101))
 }
 
@@ -74,7 +74,7 @@ def get_dataset(ctx, prefix):
 # PROCESSING #
 ##############
 VAR = 'tasmax'
-SCENARIO = 'historical'
+SCENARIO = 'rcp45'
 
 
 contexts = get_context(variable=VAR, scenario=SCENARIO)
@@ -124,15 +124,15 @@ for i, year in enumerate(contexts_years):
              arrow.get(year, mo + 1, 1).format().replace(' ', 'T')
          )
 
-         data_array = output_raster.ReadAsArray()[0:12, :, :]
-         print(data_array.shape)
+     data_array = output_raster.ReadAsArray()[0:12, :, :]
+     print(data_array.shape)
 
-         avg = np.average(data_array, 0)
-         # Very slow - do we implement interpolation or not?
-         # percentile_25th = np.nanpercentile(data_array, 25, 0)
-         # percentile_75th = np.nanpercentile(data_array, 75, 0)
-         # print(percentile_25th)
-         output_raster = None
+     avg = np.average(data_array, 0)
+     # Very slow - do we implement interpolation or not?
+     # percentile_25th = np.nanpercentile(data_array, 25, 0)
+     # percentile_75th = np.nanpercentile(data_array, 75, 0)
+     # print(percentile_25th)
+     output_raster = None
 
          
          
