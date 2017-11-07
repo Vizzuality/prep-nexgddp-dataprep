@@ -19,6 +19,7 @@ import xarray as xr
 import itertools
 import matplotlib.pyplot as plt
 import numba as nb
+import pandas as pd
 from urllib import request
 import dask
 
@@ -142,8 +143,12 @@ def cut_and_paste(arr):
 def reshape(arr):
      out = np.empty_like(arr)
      eager_arr = arr.values
-     for i in range(eager_arr.shape[0]):
-          out[i, :, :] = np.squeeze(cut_and_paste(eager_arr[i, :, :]))
+     logging.debug(f"eager_arr.shape: {eager_arr.shape}")
+     if len(eager_arr.shape) == 3:
+          for i in range(eager_arr.shape[0]):
+               out[i, :, :] = np.squeeze(cut_and_paste(eager_arr[i, :, :]))
+     else:
+          out = cut_and_paste(eager_arr)
      return out
 
 def create_new_dataset(filename, arr):
@@ -159,6 +164,13 @@ def create_new_dataset(filename, arr):
      raster = None
      return True
 
+def calc_cdd(arr, axis, **kwargs):
+     cdd = lambda data: len(list(filter(lambda x: ((x * 1.8) - 459.67) > 65.0, data)))
+     return np.apply_along_axis(cdd, axis, arr)
+
+def calc_hdd(arr, axis, **kwargs):
+     cdd = lambda data: len(list(filter(lambda x: ((x * 1.8) - 459.67) < 65.0, data)))
+     return np.apply_along_axis(cdd, axis, arr)
 ##############
 # PROCESSING #
 ##############
@@ -228,31 +240,17 @@ for i, year in enumerate(contexts_years):
      for model_target in target_by_model:
           ctx = model_target[0][0]
           logging.info(f"Processing tasavg {ctx[1:]}")
-          model_datasets = xr.merge(list(map(lambda tgt: tgt[1], model_target)))
+          model_datasets = xr.merge(list(map(lambda tgt: tgt[1], model_target))).chunk({'lat': 180, 'lon': 180})
           model_datasets['tasavg'] = ((model_datasets['tasmax'] + model_datasets['tasmin'])/2 )
           monthly_tasavg = monthly_avg(model_datasets['tasavg'])
           filename = f"{file_prefix}/tasavg_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
           create_new_dataset(filename, reshape(monthly_tasavg))
-
-     
-          # # Extra indicators
-          # logging.info("Calculating indicators")
-          # cdd = calc_cumulative_pr(dataset)
-          # ei_data_array = np.squeeze(cdd.to_array(), axis = 0)
-          # # ^ New indexes will be treated as bands - beware an extra dimension ^
-          # filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_extra_indicators.tif"
-          # output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 1, gdal.GDT_Float32)
-
-          # output_raster.SetGeoTransform(geotransform)
-          # srs = osr.SpatialReference()
-          # srs.ImportFromEPSG(4326)
-          # output_raster.SetProjection( srs.ExportToWkt() )
-
-          # out_band = output_raster.GetRasterBand(1)
-          # # outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
-          # out_band.WriteArray(np.array(cut_and_paste(ei_data_array)))
-          # output_raster = None
-          # # Saving extra indicators
-
-          # os.remove(f"{download_prefix}/{ctx[0]}_day_BCSD_{ctx[1]}_r1i1p1_{ctx[2]}_{ctx[3]}.nc")
+          # CDD and HDD
+          logging.debug("Calculating cdd and hdd")
+          cdd = model_datasets['tasavg'].reduce(calc_cdd, dim='time')
+          logging.debug(f"cdd: {cdd}")
+          hdd = model_datasets['tasavg'].reduce(calc_hdd, dim='time')
+          logging.debug(f"hdd: {hdd}")
+          extra_vars = xr.concat([cdd, hdd], pd.Index(['cdd', 'hdd'], name = 'additional_indexes'))
+          logging.debug(f"extra_vars: {extra_vars}")
 logging.info("Done!")
