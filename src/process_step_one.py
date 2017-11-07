@@ -39,16 +39,29 @@ multiprocessing_logging.install_mp_handler()
 # GLOBAL VARS #
 ###############
 # NEXGDDP data should be found here
-data_url = 'http://mymachine:8080' 
+data_url = 'http://mymachine:8080'
 # data_url = 'http://nasanex.s3.amazonaws.com'
 #
 # Do not change unless you have a good reason
 file_prefix = 'data' # < data is exposed in dev mode
-download_prefix = 'downloads' # < but downloads is not - file downloads are lost on container exit
+download_prefix = 'downloads'
+# < but downloads is not - file downloads not already processed
+# are lost on container exit
 #
-# 
 max_download_attempts = 5
 #
+all_scenarios = ['historical', 'rcp45', 'rcp85']
+all_models = ['ACCESS1-0', 'BNU-ESM', 'CCSM4', 'CESM1-BGC', 'CNRM-CM5', 'CSIRO-Mk3-6-0', 'CanESM2', 'GFDL-CM3', 'GFDL-ESM2G', 'GFDL-ESM2M', 'IPSL-CM5A-LR', 'IPSL-CM5A-MR', 'MIROC-ESM-CHEM', 'MIROC-ESM', 'MIROC5', 'MPI-ESM-LR', 'MPI-ESM-MR', 'MRI-CGCM3', 'NorESM1-M', 'bcc-csm1-1', 'inmcm4']
+all_models = ['ACCESS1-0', 'BNU-ESM']
+# all_models = ['GFDL-CM3']
+# all_vars = ['pr', 'tasmax', 'tasmin']
+all_vars = ['tasmax', 'tasmin']
+all_years = {
+     'historical': list(range(1950, 1981)),
+     'rcp45': list(range(2006, 2101)),
+     'rcp85': list(range(2006, 2101))
+}
+
 # Output corners and size
 xmin, ymin, xmax, ymax = [-180, -90, 180, 90]
 nrows, ncols = 720, 1440
@@ -86,40 +99,16 @@ def get_url(variable, scenario, model, year, prefix = data_url):
      return filename
 
 def get_context(**kwargs):
-     all_scenarios = ['historical', 'rcp45', 'rcp85']
-     all_models = ['ACCESS1-0', 'BNU-ESM', 'CCSM4', 'CESM1-BGC', 'CNRM-CM5', 'CSIRO-Mk3-6-0', 'CanESM2', 'GFDL-CM3', 'GFDL-ESM2G', 'GFDL-ESM2M', 'IPSL-CM5A-LR', 'IPSL-CM5A-MR', 'MIROC-ESM-CHEM', 'MIROC-ESM', 'MIROC5', 'MPI-ESM-LR', 'MPI-ESM-MR', 'MRI-CGCM3', 'NorESM1-M', 'bcc-csm1-1', 'inmcm4']
-     all_models = ['ACCESS1-0', 'BNU-ESM']
-     # all_models = ['ACCESS1-0']
-     all_vars = ['pr', 'tasmax', 'tasmin']
-     all_years = {
-          'historical': list(range(1950, 1981)),
-          'rcp45': list(range(2006, 2101)),
-          'rcp85': list(range(2006, 2101))
-     }
-     
-     # all_years = {
-     #      'historical': list(range(1950, 1981)),
-     #      'rcp45': list(range(2006, 2101)),
-     #      'rcp85': list(range(2006, 2101))
-     # }
-
-     # Override for smaller calculations
-
-     
      variables = [kwargs.get('variable')] if kwargs.get('variable') else all_vars
      scenarios = [kwargs.get('scenario')] if kwargs.get('scenario') else all_scenarios
      models = [kwargs.get('model')] if kwargs.get('model') else all_models
-
      outlist = []
-     
      combinations = list(itertools.product(variables, scenarios, models))
-
      for comb in combinations:
           years = all_years.get(comb[1])
           final_attributes = map(lambda y: [*comb, y], years)
           for element in final_attributes:
                outlist.append(element)
-
      return list(outlist)
 
 def get_dataset(ctx, prefix):
@@ -145,25 +134,47 @@ def yearly_avg(dataset):
      return dataset.resample('1YS', dim='time', how='mean')
 
 def cut_and_paste(arr):
-     eager_arr = arr.load().values
-     logging.debug("Eager array loading")
-     split_raster = np.hsplit(eager_arr, 2)
+     # eager_arr = arr.load().values
+     split_raster = np.hsplit(arr, 2)
      pasted_raster = np.flipud(np.hstack((split_raster[1], split_raster[0])))
      return pasted_raster
+
+def reshape(arr):
+     out = np.empty_like(arr)
+     eager_arr = arr.values
+     for i in range(eager_arr.shape[0]):
+          out[i, :, :] = np.squeeze(cut_and_paste(eager_arr[i, :, :]))
+     return out
+
+def create_new_dataset(filename, arr):
+     nbands = arr.shape[0]
+     raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, nbands, gdal.GDT_Float32)
+     raster.SetGeoTransform(geotransform)
+     srs = osr.SpatialReference()
+     srs.ImportFromEPSG(4326)
+     raster.SetProjection( srs.ExportToWkt() )
+     for nband in range(nbands):
+          outBand = raster.GetRasterBand(nband + 1)
+          outBand.WriteArray(np.squeeze(arr[nband, :, :]))
+     raster = None
+     return True
 
 ##############
 # PROCESSING #
 ##############
 
 # DOWNLOADING FILES
-# Needs catch for unavailable files
-contexts = get_context(variable='pr', scenario='historical')
+
+# Generating context - i.e. all files that need to be processed
+contexts = get_context(scenario='historical')
 logging.debug(f"contexts: {contexts}")
-     
+
+# Getting all distinct years from the whole context
 contexts_years = sorted(list(set(map(lambda x: x[3], contexts))))
 logging.debug(f"contexts_years: {contexts_years}")
 # context: [['pr', 'historical', 'ACCESS1-0', 1950], ['pr', 'historical', 'BNU-ESM', 1950], ... ]
 
+# Looping through years
 for i, year in enumerate(contexts_years):
      context = [ctx for ctx in contexts if ctx[3] == year]
      logging.debug(f"context: {list(context)}")
@@ -171,68 +182,77 @@ for i, year in enumerate(contexts_years):
      logging.debug(f"urls: {urls}")
      # urls: ['http://192.168.1.42:8080/NEX-GDDP/BCSD/historical/day/atmos/pr/r1i1p1/v1.0/pr_day_BCSD_historical_r1i1p1_ACCESS1-0_1950.nc', ... ]
 
-     pool = Pool()
-     pool.map(download_file, urls)
-     pool.close()
-     pool.join()
+     # Async downloading files
+     try:
+          pool = Pool()
+          pool.map(download_file, urls)
+          pool.close()
+          pool.join()
+     except:
+          pass
 
+     print("Finished downloading")
      # PROCESSING FILES
      logging.info("Getting datasets")
+     # Gets datasets from file disk
      datasets = map(lambda ctx: get_dataset(ctx, download_prefix), context)
      target = list(zip(context, datasets))
-     logging.debug(f"target: {target}")
-     for ctx, dataset in target:
-          # ACTUAL PROCESSING
-          logging.info("Calculating monthly averages")
-          monthly = monthly_avg(dataset)
+     # logging.debug(f"target: {target}")
 
-          # Monthly avgs
-          logging.info("Loading into memory")
-          data_array = np.squeeze(monthly.to_array())
-                     # ^ consider extra dimensions
-          out_raster_stack = np.empty_like(data_array)
 
-          logging.debug(f"data_array.shape: {data_array.shape}")
+     # ACTUAL PROCESSING
+     #
+     # First, monthly averages.
+     # This is calculated for all vars
 
-          # Saving monthly avgs
-          filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
-          logging.debug(f"filename: {filename}")
+     # for ctx, dataset in target:
+     #      logging.info(f"Calculating monthly averages for ctx {ctx}")
+     #      monthly = monthly_avg(dataset)
+     #      data_array = np.squeeze(monthly.to_array())
+     #                 # ^ consider extra dimensions
+     #      out_raster_stack = reshape(data_array)
+     #      filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
+     #      logging.debug(f"filename: {filename}")
+     #      create_new_dataset(filename, out_raster_stack)
+
+     # Now, onto the rest of the indicators
+     logging.info("Calculating extra indicators")
+
+     # First, average temperature (tasmax / tasmin) / 2
+     logging.debug("tasavg")
+     avg_temp_target = list(filter(lambda tgt: tgt[0][0] == "tasmax" or tgt[0][0] == "tasmin", target))
+     # logging.debug(f"avg_temp_target: {avg_temp_target}")
+     unique_models = list(set(map(lambda tgt: tgt[0][2], avg_temp_target)))
+     logging.debug(f"unique_models: {unique_models}")
+     target_by_model = [ [tgt for tgt in avg_temp_target if tgt[0][2] == model ] for model in unique_models ]
+     for model_target in target_by_model:
+          ctx = model_target[0][0]
+          logging.info(f"Processing tasavg {ctx[1:]}")
+          model_datasets = xr.merge(list(map(lambda tgt: tgt[1], model_target)))
+          model_datasets['tasavg'] = ((model_datasets['tasmax'] + model_datasets['tasmin'])/2 )
+          monthly_tasavg = monthly_avg(model_datasets['tasavg'])
+          filename = f"{file_prefix}/tasavg_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
+          create_new_dataset(filename, reshape(monthly_tasavg))
+
      
-          for i in range(data_array.shape[0]):
-               logging.debug(f"Processing band {str(i)}")
-               raster = np.squeeze(data_array[i, :, :])
-               logging.debug(f"Cutting and pasting")
-               reproj_array = cut_and_paste(raster)
-               out_raster_stack[i, :, :] = np.squeeze(reproj_array)
+          # # Extra indicators
+          # logging.info("Calculating indicators")
+          # cdd = calc_cumulative_pr(dataset)
+          # ei_data_array = np.squeeze(cdd.to_array(), axis = 0)
+          # # ^ New indexes will be treated as bands - beware an extra dimension ^
+          # filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_extra_indicators.tif"
+          # output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 1, gdal.GDT_Float32)
 
-          output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, data_array.shape[0], gdal.GDT_Float32)
-          output_raster.SetGeoTransform(geotransform)
-          srs = osr.SpatialReference()
-          srs.ImportFromEPSG(4326)
-          output_raster.SetProjection( srs.ExportToWkt() )
-          for nband in range(out_raster_stack.shape[0]):
-               outBand = output_raster.GetRasterBand(nband + 1)
-               outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
-          output_raster = None
+          # output_raster.SetGeoTransform(geotransform)
+          # srs = osr.SpatialReference()
+          # srs.ImportFromEPSG(4326)
+          # output_raster.SetProjection( srs.ExportToWkt() )
 
-          # Extra indicators
-          logging.info("Calculating indicators")
-          cdd = calc_cumulative_pr(dataset)
-          ei_data_array = np.squeeze(cdd.to_array(), axis = 0)
-          # ^ New indexes will be treated as bands - beware an extra dimension ^
-          filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_extra_indicators.tif"
-          output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 1, gdal.GDT_Float32)
+          # out_band = output_raster.GetRasterBand(1)
+          # # outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
+          # out_band.WriteArray(np.array(cut_and_paste(ei_data_array)))
+          # output_raster = None
+          # # Saving extra indicators
 
-          output_raster.SetGeoTransform(geotransform)
-          srs = osr.SpatialReference()
-          srs.ImportFromEPSG(4326)
-          output_raster.SetProjection( srs.ExportToWkt() )
-
-          out_band = output_raster.GetRasterBand(1)
-          # outBand.WriteArray(np.squeeze(out_raster_stack[nband, :, :]))
-          out_band.WriteArray(np.array(cut_and_paste(ei_data_array)))
-          output_raster = None
-          # Saving extra indicators
-         
-          os.remove(f"{download_prefix}/{ctx[0]}_day_BCSD_{ctx[1]}_r1i1p1_{ctx[2]}_{ctx[3]}.nc")
+          # os.remove(f"{download_prefix}/{ctx[0]}_day_BCSD_{ctx[1]}_r1i1p1_{ctx[2]}_{ctx[3]}.nc")
 logging.info("Done!")
