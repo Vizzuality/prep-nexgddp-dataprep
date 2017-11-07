@@ -7,3 +7,4 @@ numba==0.35.0
 dask==0.15.4
 toolz==0.8.2
 arrow==0.10.0
+multiprocessing-logging==0.2.4

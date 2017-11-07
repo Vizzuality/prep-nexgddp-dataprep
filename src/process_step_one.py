@@ -4,6 +4,8 @@
 
 import os
 import sys
+import time
+import logging
 
 #import boto3
 #import botocore
@@ -21,37 +23,64 @@ from urllib import request
 import dask
 
 from multiprocessing import Pool
+import multiprocessing_logging
+
+###########
+# LOGGING #
+###########
+
+logging.basicConfig(
+     level = 'DEBUG',
+     format = '%(asctime)s - %(levelname)s - %(message)s'
+)
+multiprocessing_logging.install_mp_handler()
 
 ###############
 # GLOBAL VARS #
 ###############
+# NEXGDDP data should be found here
 data_url = 'http://mymachine:8080' 
 # data_url = 'http://nasanex.s3.amazonaws.com'
-file_prefix = 'data'
-download_prefix = 'downloads'
-
+#
+# Do not change unless you have a good reason
+file_prefix = 'data' # < data is exposed in dev mode
+download_prefix = 'downloads' # < but downloads is not - file downloads are lost on container exit
+#
+# 
+max_download_attempts = 5
+#
+# Output corners and size
 xmin, ymin, xmax, ymax = [-180, -90, 180, 90]
 nrows, ncols = 720, 1440
-
 xres = (xmax - xmin) / float(ncols)
 yres = (ymax - ymin) / float(nrows)
+# ^ Used for definining a geotransform for the output data
 geotransform = (xmin, xres, 0, ymax, 0, -yres)
-
 
 #############
 # FUNCTIONS #
 #############
 
 def download_file(url):
-     print(f"Downloading file at url: {url}")
-     filename = download_prefix + '/' + str(url.split('/')[-1])
-     u = request.urlopen(url)
-     f = open(filename, 'wb')
-     f.write(u.read())
-     f.close()
-     print(f"{filename} downloaded")
-     
-def get_file(variable, scenario, model, year, prefix = data_url):
+     attempts = 0
+     success = False
+     while attempts < max_download_attempts and not success:
+          try:
+               logging.info(f"Downloading file at url: {url}")
+               time.sleep(2 ** attempts)
+               filename = download_prefix + '/' + str(url.split('/')[-1])
+               u = request.urlopen(url)
+               f = open(filename, 'wb')
+               f.write(u.read())
+               f.close()
+               success = True
+               break
+          except:
+               logging.error("Problem downloading the file. Retrying.")
+               attempts += 1
+     return success
+
+def get_url(variable, scenario, model, year, prefix = data_url):
      # /NEX-GDDP/BCSD/rcp85/day/atmos/tasmin/r1i1p1/v1.0/tasmin_day_BCSD_rcp85_r1i1p1_inmcm4_2096.nc
      filename = f"{prefix}/NEX-GDDP/BCSD/{scenario}/day/atmos/{variable}/r1i1p1/v1.0/{variable}_day_BCSD_{scenario}_r1i1p1_{model}_{str(year)}.nc"
      return filename
@@ -96,11 +125,11 @@ def get_context(**kwargs):
 def get_dataset(ctx, prefix):
      # ctx: ['pr', 'historical', 'ACCESS1-0', 1950]
      filename = f"{prefix}/{ctx[0]}_day_BCSD_{ctx[1]}_r1i1p1_{ctx[2]}_{ctx[3]}.nc"
-     print(f"filename: {filename}")
+     logging.debug(f"filename: {filename}")
      return xr.open_dataset(filename, chunks = {'lat': 60, 'lon': 60})
 
 def is_leap_year(year):
-     print(f"year: {year}")
+     logging.debug(f"year: {year}")
      # Poor man's leap year
      div_4 = True if  year % 4 == 0 else False
      div_100 = True if year % 100 == 0 else False
@@ -117,7 +146,7 @@ def yearly_avg(dataset):
 
 def cut_and_paste(arr):
      eager_arr = arr.load().values
-     print("Eager array loading")
+     logging.debug("Eager array loading")
      split_raster = np.hsplit(eager_arr, 2)
      pasted_raster = np.flipud(np.hstack((split_raster[1], split_raster[0])))
      return pasted_raster
@@ -129,17 +158,17 @@ def cut_and_paste(arr):
 # DOWNLOADING FILES
 # Needs catch for unavailable files
 contexts = get_context(variable='pr', scenario='historical')
-print(f"contexts: {contexts}")
+logging.debug(f"contexts: {contexts}")
      
 contexts_years = sorted(list(set(map(lambda x: x[3], contexts))))
-print(f"contexts_years: {contexts_years}")
+logging.debug(f"contexts_years: {contexts_years}")
 # context: [['pr', 'historical', 'ACCESS1-0', 1950], ['pr', 'historical', 'BNU-ESM', 1950], ... ]
 
 for i, year in enumerate(contexts_years):
      context = [ctx for ctx in contexts if ctx[3] == year]
-     print(f"context: {list(context)}")
-     urls = list(map(lambda c: get_file(*c), context))
-     print(f"urls: {urls}")
+     logging.debug(f"context: {list(context)}")
+     urls = list(map(lambda c: get_url(*c), context))
+     logging.debug(f"urls: {urls}")
      # urls: ['http://192.168.1.42:8080/NEX-GDDP/BCSD/historical/day/atmos/pr/r1i1p1/v1.0/pr_day_BCSD_historical_r1i1p1_ACCESS1-0_1950.nc', ... ]
 
      pool = Pool()
@@ -148,32 +177,31 @@ for i, year in enumerate(contexts_years):
      pool.join()
 
      # PROCESSING FILES
-     print("Getting datasets")
-     datasets = map(lambda ds: get_dataset(ds, download_prefix), context)
+     logging.info("Getting datasets")
+     datasets = map(lambda ctx: get_dataset(ctx, download_prefix), context)
      target = list(zip(context, datasets))
-     print(f"target: {target}")
+     logging.debug(f"target: {target}")
      for ctx, dataset in target:
           # ACTUAL PROCESSING
-          print("Calculating monthly averages")
+          logging.info("Calculating monthly averages")
           monthly = monthly_avg(dataset)
 
           # Monthly avgs
-          print("Loading into memory")
+          logging.info("Loading into memory")
           data_array = np.squeeze(monthly.to_array())
                      # ^ consider extra dimensions
           out_raster_stack = np.empty_like(data_array)
 
-          print("data_array.shape")
-          print(data_array.shape)
+          logging.debug(f"data_array.shape: {data_array.shape}")
 
           # Saving monthly avgs
           filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_monthly_avg.tif"
-          print(f"filename: {filename}")
+          logging.debug(f"filename: {filename}")
      
           for i in range(data_array.shape[0]):
-               print(f"Processing band {str(i)}")
+               logging.debug(f"Processing band {str(i)}")
                raster = np.squeeze(data_array[i, :, :])
-               print(f"Cutting and pasting")
+               logging.debug(f"Cutting and pasting")
                reproj_array = cut_and_paste(raster)
                out_raster_stack[i, :, :] = np.squeeze(reproj_array)
 
@@ -188,11 +216,9 @@ for i, year in enumerate(contexts_years):
           output_raster = None
 
           # Extra indicators
-          print("Calculating indicators")
+          logging.info("Calculating indicators")
           cdd = calc_cumulative_pr(dataset)
-          print(cdd.to_array().shape)
           ei_data_array = np.squeeze(cdd.to_array(), axis = 0)
-          print(ei_data_array.shape)
           # ^ New indexes will be treated as bands - beware an extra dimension ^
           filename = f"{file_prefix}/{ctx[0]}_{ctx[1]}_{ctx[2]}_{ctx[3]}_extra_indicators.tif"
           output_raster = gdal.GetDriverByName('GTiff').Create(filename, ncols, nrows, 1, gdal.GDT_Float32)
@@ -209,4 +235,4 @@ for i, year in enumerate(contexts_years):
           # Saving extra indicators
          
           os.remove(f"{download_prefix}/{ctx[0]}_day_BCSD_{ctx[1]}_r1i1p1_{ctx[2]}_{ctx[3]}.nc")
-print("Done!")
+logging.info("Done!")
