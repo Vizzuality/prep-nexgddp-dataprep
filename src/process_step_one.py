@@ -253,4 +253,8 @@ for i, year in enumerate(contexts_years):
           logging.debug(f"hdd: {hdd}")
           extra_vars = xr.concat([cdd, hdd], pd.Index(['cdd', 'hdd'], name = 'additional_indexes'))
           logging.debug(f"extra_vars: {extra_vars}")
+
+          filename = f"{file_prefix}/extra_vars_{ctx[1]}_{ctx[2]}_{ctx[3]}.tif"
+          create_new_dataset(filename, reshape(extra_vars))
+
 logging.info("Done!")
