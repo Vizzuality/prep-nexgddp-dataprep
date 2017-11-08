@@ -169,8 +169,25 @@ def calc_cdd(arr, axis, **kwargs):
      return np.apply_along_axis(cdd, axis, arr)
 
 def calc_hdd(arr, axis, **kwargs):
-     cdd = lambda data: len(list(filter(lambda x: ((x * 1.8) - 459.67) < 65.0, data)))
-     return np.apply_along_axis(cdd, axis, arr)
+     hdd = lambda data: len(list(filter(lambda x: ((x * 1.8) - 459.67) < 65.0, data)))
+     return np.apply_along_axis(hdd, axis, arr)
+
+def calc_ffs(arr, axis, **kwargs):
+     ffs = lambda data: longest_streak(list(filter(lambda x: x > 273.150, data)))
+     logging.debug(f"ffs: {ffs}")
+     return np.apply_along_axis(ffs, axis, arr)
+
+def longest_streak(arr):
+     day_count = 0
+     longest = 0
+     for element in arr:
+          if element:
+               day_count = day_count + 1
+               if day_count > longest:
+                    longest = day_count
+          else:
+               day_count = 0
+     return day_count
 ##############
 # PROCESSING #
 ##############
@@ -248,13 +265,33 @@ for i, year in enumerate(contexts_years):
           # CDD and HDD
           logging.debug("Calculating cdd and hdd")
           cdd = model_datasets['tasavg'].reduce(calc_cdd, dim='time')
-          logging.debug(f"cdd: {cdd}")
           hdd = model_datasets['tasavg'].reduce(calc_hdd, dim='time')
-          logging.debug(f"hdd: {hdd}")
-          extra_vars = xr.concat([cdd, hdd], pd.Index(['cdd', 'hdd'], name = 'additional_indexes'))
-          logging.debug(f"extra_vars: {extra_vars}")
+          ffs = model_datasets['tasmin'].reduce(calc_ffs, dim='time')
+#           ffs_2 = model_datasets['tasavg'].reduce(calc_ffs, dim='time')
+          #cpp = model_datasets['tasavg'].reduce(calc_ffs, dim='time')
+          extra_vars = xr.concat([
+               cdd,
+               hdd,
+               ffs
+          ], pd.Index(['cdd', 'hdd', 'ffs', 'cpp'], name = 'additional_indexes'))
 
           filename = f"{file_prefix}/extra_vars_{ctx[1]}_{ctx[2]}_{ctx[3]}.tif"
           create_new_dataset(filename, reshape(extra_vars))
+
+     # pr
+
+     # First, average temperature (tasmax / tasmin) / 2
+     logging.debug("pr")
+     cum_pr_target = list(filter(lambda tgt: tgt[0][0] == "pr", target))
+     # logging.debug(f"avg_temp_target: {avg_temp_target}")
+     unique_models = list(set(map(lambda tgt: tgt[0][2], cum_pr_target)))
+     logging.debug(f"unique_models: {unique_models}")
+     target_by_model = [ [tgt for tgt in cum_pr_target if tgt[0][2] == model ] for model in unique_models ]
+     for model_target in target_by_model:
+          ctx = model_target[0][0]
+          logging.info(f"Processing cumulative precipitations {ctx[1:]}")
+          model_datasets = model_target[1].chunk({'lat': 180, 'lon': 180})
+          cumulative_pr = model_datasets['pr'].reduce(sum, dim = 'time')
+          
 
 logging.info("Done!")
